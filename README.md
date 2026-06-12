@@ -1,0 +1,1 @@
+# Tratamento-imagens-ENEM2022-1-1-InglesDigital
