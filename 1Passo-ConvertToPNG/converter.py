@@ -13,8 +13,8 @@ OBS4: exclua as páginas 1 (capa), 19 (proposta de redação) e 32 (rascunho da 
 from pdf2image import convert_from_path
 import os
 
-arquivo = "2022_PV_digital_D1_CD1_ingles.pdf"
-pasta_saida = "imagens-convertidas"
+arquivo = "51-104.pdf"
+pasta_saida = "imagens-convertidas2"
 
 if not os.path.exists(pasta_saida):
     os.makedirs(pasta_saida)
@@ -33,7 +33,7 @@ try:
     )
 
     for i, image in enumerate(images):
-        image_filename = os.path.join(pasta_saida, f"pagina_enem_{i+1}.png")
+        image_filename = os.path.join(pasta_saida, f"pagina_enem_{i+51}.png")
         image.save(image_filename)
         print(f"Página {i+1} salva como '{image_filename}'")
 
