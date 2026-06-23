@@ -1,37 +1,35 @@
 """
-Propósito: Dividir as questões por padrão. Observa-se que ao início de cada questão tem uma faixa de alguma cor, que é o padrão de início de cada questão
+Propósito: Dividir as questões por padrão de faixa cinza RGB (220, 220, 220)
+Corte: EXATAMENTE no início da faixa divisória (sem margens adicionais)
 Autor: Alexandre Nassar de Peder
 Criação: 02/10/2025
 Atualização: 03/06/2026
-
-OBS1: puxe a imagem "colunas_concatenadas_verticalmente.png" do passo 6 para essa pasta do passo 7, e as imagens de páginas inteiras da pasta "inteiras" do passo 5 para essa pasta do passo 7
-OBS2: esse código vai percorrer a imagem de cima pra baixo, sempre analisando o pixel do meio da imagem, para encontrar a faixa que divide as questões. Quando encontrar a faixa, ele vai cortar a imagem ANTES da faixa, e depois pular a faixa para continuar procurando a próxima questão
-OBS3: primeiro você vai rodar esse código para cortar a imagem de colunas concatenadas, depois você vai rodar para cada página inteira
-OBS4: atualize as linhas 127 e 128 para recortar a imagem de colunas concatenadas, depois atualize para recortar cada página inteira. Atualize o nome da pasta de saída também
-OBS5: atualize a linha 134 para a cor RGB 0a100 exata da faixa que divide as questões. Use o GIMP para descobrir a cor
-OBS6: atualize a linha 27 com a altura da faixa. Use o GIMP para medir a altura da faixa em pixels
 """
 
 from PIL import Image
 import os
 
-def converter_cor_gimp_para_rgb(gimp_r, gimp_g, gimp_b):
-    """
-    Converte valores do GIMP (0-100) para RGB (0-255)
-    """
-    r = int((gimp_r / 100) * 255)
-    g = int((gimp_g / 100) * 255)
-    b = int((gimp_b / 100) * 255)
-    return (r, g, b)
+# ===== SOLUÇÃO PARA O ERRO DE LIMITE DE PIXELS =====
+Image.MAX_IMAGE_PIXELS = None  # Remove o limite máximo de pixels
 
-def encontrar_faixa_azul(imagem, cor_alvo, tolerancia=15, altura_faixa=156): # ATUALIZAR a altura da faixa
+def encontrar_faixa_separadora(imagem, cor_alvo=(220, 220, 220), tolerancia=20, altura_faixa=156):
     """
     Encontra posições onde há uma faixa horizontal da cor especificada
+    A faixa padrão é RGB (220, 220, 220) com 156 pixels de altura
+    
+    Args:
+        imagem: Objeto PIL Image
+        cor_alvo: Tupla RGB da cor da faixa (padrão: 220, 220, 220)
+        tolerancia: Tolerância para variação de cor (padrão: 20)
+        altura_faixa: Altura da faixa em pixels (padrão: 156)
+    
+    Returns:
+        Lista de posições y onde as faixas começam
     """
     largura, altura = imagem.size
     pixels = imagem.load()
     
-    posicoes_corte = []
+    posicoes_faixas = []  # Posição onde a faixa COMEÇA (y inicial)
     
     # Percorre a imagem de cima para baixo
     y = 0
@@ -39,102 +37,165 @@ def encontrar_faixa_azul(imagem, cor_alvo, tolerancia=15, altura_faixa=156): # A
         # Verifica se há uma faixa de 'altura_faixa' pixels da cor alvo
         faixa_encontrada = True
         
+        # Verifica em múltiplos pontos na horizontal para maior precisão
+        pontos_verificacao = [
+            largura // 4,   # 25% da largura
+            largura // 2,   # 50% da largura (meio)
+            3 * largura // 4 # 75% da largura
+        ]
+        
         for dy in range(altura_faixa):
-            # Pega a cor do pixel atual (verifica no último pixel da linha, ou seja, no canto da imagem)
-            pixel = pixels[largura-2, y + dy]  # CORRIGIDO: verificar o pixel próximo ao canto para evitar bordas
+            linha_valida = False
             
-            if len(pixel) == 4:  # RGBA
-                r, g, b, a = pixel
-            else:  # RGB
-                r, g, b = pixel[:3]
+            # Verifica em vários pontos da linha
+            for x in pontos_verificacao:
+                if x >= largura:
+                    continue
+                    
+                pixel = pixels[x, y + dy]
+                
+                if len(pixel) == 4:  # RGBA
+                    r, g, b, a = pixel
+                else:  # RGB
+                    r, g, b = pixel[:3]
+                
+                # Verifica se a cor está dentro da tolerância
+                if (abs(r - cor_alvo[0]) <= tolerancia and 
+                    abs(g - cor_alvo[1]) <= tolerancia and 
+                    abs(b - cor_alvo[2]) <= tolerancia):
+                    linha_valida = True
+                    break
             
-            # Verifica se a cor está dentro da tolerância
-            if (abs(r - cor_alvo[0]) > tolerancia or 
-                abs(g - cor_alvo[1]) > tolerancia or 
-                abs(b - cor_alvo[2]) > tolerancia):
+            if not linha_valida:
                 faixa_encontrada = False
                 break
         
         if faixa_encontrada:
-            # Corta ANTES da faixa azul (no pixel anterior)
-            posicao_corte = y - 13  # CORREÇÃO: definir a variável
-            if posicao_corte < 0:  # Evitar posições negativas
-                posicao_corte = 0
-                
-            posicoes_corte.append(posicao_corte)
-            print(f"Faixa azul encontrada começando em y={y}, cortando em y={posicao_corte}")
+            # Guarda a posição onde a faixa COMEÇA (y inicial)
+            posicoes_faixas.append(y)
+            print(f"Faixa separadora encontrada começando em y={y}")
+            
             # Pula a faixa inteira para evitar detecções múltiplas
             y += altura_faixa
         else:
             y += 1
     
-    return posicoes_corte
+    return posicoes_faixas
 
-def dividir_imagem_por_faixas(caminho_imagem, pasta_saida, cor_alvo):
+def dividir_questoes(caminho_imagem, pasta_saida, cor_alvo=(220, 220, 220)):
     """
-    Divide a imagem verticalmente cortando ANTES das faixas
+    Divide a imagem em questões individuais cortando EXATAMENTE no início das faixas cinzas
+    A faixa pertence à questão anterior
+    
+    Args:
+        caminho_imagem: Caminho da imagem de entrada
+        pasta_saida: Pasta onde salvar as questões
+        cor_alvo: Cor da faixa em RGB (padrão: 220, 220, 220)
     """
-    # Abre a imagem
-    imagem = Image.open(caminho_imagem)
-    largura, altura = imagem.size
-    
-    print(f"Imagem carregada: {largura}x{altura} pixels")
-    
-    # Encontra as posições das faixas azuis
-    posicoes_corte = encontrar_faixa_azul(imagem, cor_alvo)
-    
-    if not posicoes_corte:
-        print("Nenhuma faixa azul encontrada na imagem!")
+    # Verifica se o arquivo existe
+    if not os.path.exists(caminho_imagem):
+        print(f"ERRO: Arquivo não encontrado: {caminho_imagem}")
         return
     
-    print(f"Encontradas {len(posicoes_corte)} faixas azuis para corte")
+    # Abre a imagem
+    try:
+        imagem = Image.open(caminho_imagem)
+        largura, altura = imagem.size
+        print(f"Imagem carregada: {largura}x{altura} pixels")
+    except Exception as e:
+        print(f"ERRO ao carregar imagem: {e}")
+        return
+    
+    # Encontra as posições onde as faixas começam
+    posicoes_faixas = encontrar_faixa_separadora(imagem, cor_alvo)
+    
+    if not posicoes_faixas:
+        print("Nenhuma faixa separadora encontrada na imagem!")
+        print("Verifique se a imagem contém faixas RGB (220, 220, 220)")
+        return
+    
+    print(f"\nEncontradas {len(posicoes_faixas)} faixas separadoras")
+    print("Posições das faixas (y inicial):", posicoes_faixas)
     
     # Cria a pasta de saída se não existir
     os.makedirs(pasta_saida, exist_ok=True)
     
-    # Corta as seções da imagem
+    # ===== CORTE EXATO NO INÍCIO DA FAIXA =====
+    # A faixa pertence à questão anterior (corte em cima da faixa)
+    
     posicao_anterior = 0
     
-    for i, posicao_corte in enumerate(posicoes_corte):
-        # Garantir que a posição de corte é válida
-        if posicao_corte <= posicao_anterior:
-            continue
-            
-        # Corta a seção ANTES da faixa azul (do início anterior até o início da faixa)
-        area_corte = (0, posicao_anterior, largura, posicao_corte)
-        secao = imagem.crop(area_corte)
+    for i, posicao_faixa in enumerate(posicoes_faixas):
+        # Corta a questão: do início anterior até o COMEÇO da faixa
+        # SEM margens adicionais - corte exato
+        area_corte = (0, posicao_anterior, largura, posicao_faixa)
+        questao = imagem.crop(area_corte)
         
-        # Salva a imagem cortada
-        nome_arquivo = f"parte_{i+1:03d}.png"
+        # Salva a questão
+        nome_arquivo = f"questao_{i+1:03d}.png"
         caminho_completo = os.path.join(pasta_saida, nome_arquivo)
-        secao.save(caminho_completo)
-        print(f"Salvo: {caminho_completo} ({secao.width}x{secao.height}px)")
+        questao.save(caminho_completo)
+        print(f"✅ Salvo: {nome_arquivo} ({questao.width}x{questao.height}px)")
+        print(f"   Corte: y={posicao_anterior} até y={posicao_faixa} (exato)")
         
-        # A próxima seção começa após o final desta faixa azul
-        posicao_anterior = posicao_corte + 10  # Pula a faixa azul de 10 pixels
+        # A próxima questão começa EXATAMENTE no início da faixa
+        posicao_anterior = posicao_faixa
     
-    # Corta a seção final (após a última faixa azul)
+    # Corta a questão final (após a última faixa até o final)
     if posicao_anterior < altura:
         area_corte = (0, posicao_anterior, largura, altura)
-        secao = imagem.crop(area_corte)
+        questao = imagem.crop(area_corte)
         
-        nome_arquivo = f"parte_{len(posicoes_corte)+1:03d}.png"
+        nome_arquivo = f"questao_{len(posicoes_faixas)+1:03d}.png"
         caminho_completo = os.path.join(pasta_saida, nome_arquivo)
-        secao.save(caminho_completo)
-        print(f"Salvo: {caminho_completo} ({secao.width}x{secao.height}px)")
+        questao.save(caminho_completo)
+        print(f"✅ Salvo: {nome_arquivo} ({questao.width}x{questao.height}px)")
+        print(f"   Corte: y={posicao_anterior} até y={altura} (final)")
+    
+    print(f"\n{'='*60}")
+    print(f"✅ DIVISÃO CONCLUÍDA!")
+    print(f"📁 Total: {len(posicoes_faixas)+1} questões salvas em '{pasta_saida}'")
+    print(f"{'='*60}")
+
+def main():
+    """
+    Função principal - Configure aqui os parâmetros
+    """
+    
+    # ===== CONFIGURAÇÕES =====
+    
+    # COR DA FAIXA SEPARADORA (RGB)
+    # Padrão: (220, 220, 220) - Cinza claro
+    cor_faixa = (220, 220, 220)
+    
+    # ALTURA DA FAIXA em pixels
+    altura_faixa = 156
+    
+    # TOLERÂNCIA para detecção da cor
+    tolerancia = 20
+    
+    # ===== PROCESSAR COLUNAS CONCATENADAS =====
+    caminho_imagem = "colunas_concatenadas_58-104.png"
+    pasta_saida = "questoes_colunas2"
+    
+    # ===== PROCESSAR PÁGINAS INDIVIDUAIS =====
+    # Para processar a página que você enviou:
+    #caminho_imagem = "pagina_enem_7.png"
+    #pasta_saida = "questoes_pagina_7"
+    
+    # ===== EXECUTAR =====
+    print("="*60)
+    print("DIVISOR DE QUESTÕES DO ENEM")
+    print("="*60)
+    print(f"📐 Cor da faixa: RGB{cor_faixa}")
+    print(f"📏 Altura da faixa: {altura_faixa} pixels")
+    print(f"🎯 Tolerância: {tolerancia}")
+    print(f"📂 Imagem: {caminho_imagem}")
+    print(f"📁 Pasta de saída: {pasta_saida}")
+    print("="*60)
+    print()
+    
+    dividir_questoes(caminho_imagem, pasta_saida, cor_faixa)
 
 if __name__ == "__main__":
-    caminho_imagem = "colunas_concatenadas_verticalmente.png"  # Substitua pelo caminho da sua imagem
-    pasta_saida = "questoes-recortadas" # Substitua pelo nome da pasta de saída desejada (questoes_colunas, pagina_15, pagina_28)
-
-    #caminho_imagem = "./inteiras/pagina_enem_15.png"  # Substitua pelo caminho da sua imagem
-    #pasta_saida = "pagina_15" # Substitua pelo nome da pasta de saída desejada (questoes_colunas, pagina_15, pagina_28)
-    
-    # Converte a cor do GIMP 0a100 para RGB (0a255)
-    cor_do_padrao = converter_cor_gimp_para_rgb(86.3, 86.3, 86.3) # COLOCAR O RGB CORRETO DA FAIXA QUE DIVIDE AS QUESTÕES (0a100 do GIMP)
-    print(f"Cor convertida: RGB{cor_do_padrao}")
-    
-    # Executa a divisão
-    dividir_imagem_por_faixas(caminho_imagem, pasta_saida, cor_do_padrao)
-    
-    print("Divisão concluída!")
+    main()
