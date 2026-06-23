@@ -2,8 +2,8 @@ from PIL import Image
 import os
 import re
 
-pasta_imagens = "sem-bordas-externas"
-pasta_saida = "concatenada"
+pasta_imagens = "58-104"
+pasta_saida = "concatenadas-58-104"
 os.makedirs(pasta_saida, exist_ok=True)
 
 def get_sort_key(nome_arquivo):
@@ -28,6 +28,6 @@ for img in imagens:
     imagem_final.paste(img, (0, y))
     y += img.height
 
-imagem_final.save(os.path.join(pasta_saida, 'colunas_concatenadas_verticalmente.png'))
+imagem_final.save(os.path.join(pasta_saida, 'colunas_concatenadas_58-104.png'))
 print("Imagens concatenadas na ordem correta!")
 print(f"Ordem dos arquivos: {arquivos}")
